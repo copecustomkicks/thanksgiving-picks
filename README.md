@@ -1,36 +1,78 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Thanksgiving Picks
 
-## Getting Started
+Private family prediction game: **dog show** group winners + Best in Show, **Thanksgiving football** game winners, and a **live leaderboard**. Stack: **Next.js (App Router)**, **TypeScript**, **Tailwind CSS**, **Supabase** (Postgres + Realtime + anonymous auth).
 
-First, run the development server:
+## Prerequisites
+
+- Node.js 20+ recommended
+- A [Supabase](https://supabase.com/) project
+
+## 1. Supabase setup
+
+1. Create a project in Supabase.
+2. Open **SQL Editor**, paste the contents of [`supabase/migrations/0001_initial.sql`](supabase/migrations/0001_initial.sql), and run it.
+3. Enable **Anonymous sign-ins**: **Authentication** → **Providers** → **Anonymous** → enable.
+4. Under **Project Settings** → **API**, copy:
+   - Project URL → `NEXT_PUBLIC_SUPABASE_URL`
+   - `anon` `public` key → `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - `service_role` key → `SUPABASE_SERVICE_ROLE_KEY` (server-only; never ship to the browser)
+
+## 2. Local app setup
 
 ```bash
+cd thanksgiving-picks
+cp .env.local.example .env.local
+# Edit .env.local with your Supabase keys, ADMIN_PASSWORD, and ADMIN_SESSION_SECRET
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 3. Seed sample data (optional)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+With `SUPABASE_SERVICE_ROLE_KEY` and `NEXT_PUBLIC_SUPABASE_URL` in the environment (e.g. in `.env.local`), run:
 
-## Learn More
+```bash
+node scripts/seed.mjs
+```
 
-To learn more about Next.js, take a look at the following resources:
+On Windows PowerShell you can load `.env.local` manually or use a tool such as [dotenv-cli](https://www.npmjs.com/package/dotenv-cli):
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+npx dotenv-cli -e .env.local -- node scripts/seed.mjs
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Defaults:
 
-## Deploy on Vercel
+- Event slug: `thanksgiving-2026`
+- Family code: `family-demo` (override with `SEED_FAMILY_CODE` if you set it in the shell)
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+You can also use **Admin** → **Ensure demo event** and **Seed sample dogs & games** in the UI.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 4. Deploy on Vercel
+
+1. Push the repo and import the project in [Vercel](https://vercel.com/).
+2. Add the same environment variables as in `.env.local.example` (including `SUPABASE_SERVICE_ROLE_KEY`, `ADMIN_PASSWORD`, `ADMIN_SESSION_SECRET`).
+3. In Supabase **Authentication** → **URL Configuration**, add your Vercel URL to **Site URL** and **Redirect URLs** if you use additional auth flows later.
+
+## How it works (short)
+
+- **Players**: anonymous Supabase user per device, display name + **family code** verified on the server against `event_secrets`. Active event is stored in an **httpOnly cookie** (`tp_event_id`).
+- **Admin**: password checked by `/api/admin/login`; a signed **httpOnly cookie** gates `/admin/*`. All data mutations use the **service role** client on the server only.
+- **Realtime**: [`RefreshOnRealtime`](components/providers/RefreshOnRealtime.tsx) subscribes to `postgres_changes` and calls `router.refresh()` so scores and locks update without manual refresh.
+- **Scoring**: SQL function `leaderboard_for_event` matches picks to official results; points apply only when a result row exists.
+
+## Scripts
+
+| Command        | Description                |
+| -------------- | -------------------------- |
+| `npm run dev`  | Start dev server           |
+| `npm run build`| Production build           |
+| `npm run start`| Start production server    |
+| `npm run lint` | ESLint                     |
+| `node scripts/seed.mjs` | Seed demo event + data |
+
+## Security notes
+
+This is a **low-friction family app**, not a public SaaS. Use a strong `ADMIN_PASSWORD`, rotate the **family code** in `event_secrets` for each year, and never expose the **service role** key to the client.
